@@ -55,7 +55,7 @@ timer_calibrate (void) {
 
 	/* Approximate loops_per_tick as the largest power-of-two
 	   still less than one timer tick. */
-	loops_per_tick = 1u << 10;
+	loops_per_tick = 1u << 10; // 2 ^ 10 bits
 	while (!too_many_loops (loops_per_tick << 1)) {
 		loops_per_tick <<= 1;
 		ASSERT (loops_per_tick != 0);
