@@ -18,10 +18,14 @@
 #endif
 
 /* Number of timer ticks since OS booted. */
-static int64_t ticks;
+// 64bit 정수형, 전역 정적 변수이므로 0으로 초기화, 타이머 인터럽트가 발생할 때마다 증가, 부팅 후 경과한 Tick 수를 나타냄.
+static int64_t ticks;  
 
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
+// 한 Tick 동안 CPU가 반복문을 대략 몇 번 실행할 수 있는지 저장
+// timer_calibrate()에서 계산
+// 아주 짧은 시간의 busy_wait()에 사용
 static unsigned loops_per_tick;
 
 static intr_handler_func timer_interrupt;
