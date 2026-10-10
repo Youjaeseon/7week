@@ -11,6 +11,8 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+// #include "../devices/timer.c"
+#include "lib/kernel/list.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -27,6 +29,9 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* sleep 상태의 스레드를 담는 리스트 선언 */
+static struct list sleep_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -63,6 +68,7 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+list_less_func compare;
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -93,7 +99,7 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
    It is not safe to call thread_current() until this function
    finishes. */
 void
-thread_init (void) {
+thread_init (void) { // 스레드를 생성
 	ASSERT (intr_get_level () == INTR_OFF);
 
 	/* Reload the temporal gdt for the kernel
@@ -109,6 +115,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -224,6 +231,42 @@ thread_block (void) {
 	schedule ();
 }
 
+// 크기 비교하는 함수. a보다 b가 크면 true 반환함.
+bool 
+compare(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	// struct thread *curr = thread_current();
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+
+	return a->waketick < b->waketick;
+}
+
+/* 스레드를 sleep list에 넣는 함수*/
+void
+thread_sleep (int64_t wake_tick)
+{
+	struct thread *curr = thread_current();	
+	curr->waketick = wake_tick;
+	list_insert_ordered(&sleep_list, &(curr->elem), &compare, NULL);
+	thread_block();
+}
+/* 스레드를 sleep list 에서 ready list 로 옮겨 주는 함수*/
+void
+thread_wake (int64_t current_tick)
+{
+	while(list_size(&sleep_list))
+	{
+		struct thread *t = list_entry(list_front(&sleep_list), struct thread, elem);
+		if(t->waketick > current_tick)
+			return;
+		else
+		{
+			list_pop_front(&sleep_list);
+			thread_unblock(t);
+		}
+	}
+}
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
