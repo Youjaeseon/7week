@@ -158,6 +158,37 @@ thread_tick (void) {
 		intr_yield_on_return ();
 }
 
+void
+thread_sleep (int64_t wakeup_tick) {
+    enum intr_level old_level = intr_disable ();
+
+    struct thread *current = thread_current ();
+
+    current->wakeup_tick = wakeup_tick;
+
+    list_push_back (&sleep_list, &current->elem);
+
+    thread_block ();
+
+    intr_set_level (old_level);
+}
+
+void
+thread_wakeup (int64_t current_tick) {
+    struct list_elem *e = list_begin (&sleep_list);
+
+    while (e != list_end (&sleep_list)) {
+        struct thread *t =
+            list_entry (e, struct thread, elem);
+
+        if (t->wakeup_tick <= current_tick) {
+            e = list_remove (e);
+            thread_unblock (t);
+        } else {
+            e = list_next (e);
+        }
+    }
+}
 /* Prints thread statistics. */
 void
 thread_print_stats (void) {

@@ -105,11 +105,6 @@ timer_sleep (int64_t ticks) {
 		thread_sleep(start + ticks);
 }
 
-void
-thread_sleep(int64_t tick){
-	return;
-}
-
 /* Suspends execution for approximately MS milliseconds. */
 void
 timer_msleep (int64_t ms) {
@@ -138,6 +133,7 @@ timer_print_stats (void) {
 static void    
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	thread_wakeup (ticks);
 	thread_tick ();
 }
 
