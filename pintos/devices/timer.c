@@ -97,8 +97,17 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield (); // CPU 양보
+	// context switching이 일어나면서 문제가 생길 수 있음.
+
+	if(timer_elapsed (start) < ticks)
+		thread_sleep(start + ticks);
+}
+
+void
+thread_sleep(int64_t tick){
+	return;
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -125,8 +134,8 @@ timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
-static void
+/* Timer interrupt handler. */    //컨텍스트 저장(스냅샷(?))
+static void    
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
