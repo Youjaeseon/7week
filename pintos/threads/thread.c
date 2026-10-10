@@ -68,7 +68,8 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-list_less_func compare;
+list_less_func compare_waketick;
+list_less_func compare_priority;
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -233,7 +234,7 @@ thread_block (void) {
 
 // 크기 비교하는 함수. a보다 b가 크면 true 반환함.
 bool 
-compare(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+compare_waketick(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
 {
 	// struct thread *curr = thread_current();
 	const struct thread *a = list_entry(a_, struct thread, elem);
@@ -242,13 +243,21 @@ compare(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED
 	return a->waketick < b->waketick;
 }
 
+bool
+compare_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+
+	return a->priority > b->priority;
+}
 /* 스레드를 sleep list에 넣는 함수*/
 void
 thread_sleep (int64_t wake_tick)
 {
 	struct thread *curr = thread_current();	
 	curr->waketick = wake_tick;
-	list_insert_ordered(&sleep_list, &(curr->elem), &compare, NULL);
+	list_insert_ordered(&sleep_list, &(curr->elem), &compare_waketick, NULL);
 	thread_block();
 }
 /* 스레드를 sleep list 에서 ready list 로 옮겨 주는 함수*/
@@ -283,7 +292,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -346,7 +356,9 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		// list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &(curr->elem), &compare_priority, NULL);
+
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
