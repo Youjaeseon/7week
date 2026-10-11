@@ -30,3 +30,6 @@ core
 .DS_Store
 
 AGENTS.md
+priority-scheduling-two-person-plan.md
+.vscode/launch.json
+.vscode/tasks.json
