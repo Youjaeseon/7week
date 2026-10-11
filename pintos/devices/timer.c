@@ -7,6 +7,7 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+// #include "lib/kernel/list.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -55,7 +56,7 @@ timer_calibrate (void) {
 
 	/* Approximate loops_per_tick as the largest power-of-two
 	   still less than one timer tick. */
-	loops_per_tick = 1u << 10;
+	loops_per_tick = 1u << 10; // 2 ^ 10 bits
 	while (!too_many_loops (loops_per_tick << 1)) {
 		loops_per_tick <<= 1;
 		ASSERT (loops_per_tick != 0);
@@ -93,10 +94,24 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield ();
+	enum intr_level old_level = intr_disable();
+	// set_waketick(ticks);
+	int64_t waketick = start + ticks;
+	thread_sleep(waketick);
+	// thread_block();
+	intr_set_level(old_level);
 }
 
+
+/* 스레드가 몇틱에 깨어나야 하는지 저장 */
+// static void
+// set_waketick (int64_t ticks)
+// {
+// 	struct thread *curr = thread_current();
+// 	curr->waketick = timer_ticks() + ticks;
+// }
 /* Suspends execution for approximately MS milliseconds. */
 void
 timer_msleep (int64_t ms) {
@@ -125,6 +140,19 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	/* 
+	 * 리스트 순회해서 타이머 틱 비교하고
+	 * wake해야 하면 unblock하고 ready list에 넣어주기
+	 * 호출할 때 인터럽트 껐다가 복구하기
+	 */
+	// while(list_size(&sleep_list))
+	// {
+	// 	struct thread *curr = list_first(&sleep_list);
+	// 	int64_t tickdiff = curr->waketick - timer_ticks();
+	// 	if(curr->waketick <= timer_ticks())
+	// 		thread_unblock(curr);
+	// }
+	thread_wake (ticks);
 	thread_tick ();
 }
 
