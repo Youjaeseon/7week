@@ -648,3 +648,24 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+void
+thread_check_preemption(void)
+{
+    enum intr_level old_level = intr_disable();
+
+    if (!list_empty(&ready_list)) {
+        struct thread *highest =
+            list_entry(list_front(&ready_list),
+                       struct thread, elem);
+
+        if (highest->priority > thread_current()->priority) {
+            if (intr_context())
+                intr_yield_on_return();
+            else
+                thread_yield();
+        }
+    }
+
+    intr_set_level(old_level);
+}
