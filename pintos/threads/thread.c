@@ -371,7 +371,16 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	ASSERT(PRI_MIN <= new_priority &&
+        new_priority <= PRI_MAX);
+
+    enum intr_level old_level = intr_disable();
+
+    thread_current()->priority = new_priority;
+
+    intr_set_level(old_level);
+
+    thread_check_preemption();
 }
 
 /* Returns the current thread's priority. */

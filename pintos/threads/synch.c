@@ -66,7 +66,10 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable (); // 인터럽트 끄기. 인터럽트로 인해 실행이 중단되고 다른 스레드가 끼어들 수 있다.(원자성 보장.)
 	while (sema->value == 0) {  // Semaphore 0인 동안 - if문이 아닌 이유는? sema_up을 했다고 해도 semaphore의 허가를 얻은것이 아님.
-		list_push_back (&sema->waiters, &thread_current ()->elem); // Sema->waitres에 현재 스레드 대기상태로 추가. 같은 elem을 동시에 여러 리스트에 넣으면 안된다.
+		//list_push_back (&sema->waiters, &thread_current ()->elem); // Sema->waitres에 현재 스레드 대기상태로 추가. 같은 elem을 동시에 여러 리스트에 넣으면 안된다.
+		
+		list_insert_ordered(&sema->waiters,&thread_current()->elem,compare_priority,NULL); // 리스트에 원소 넣을 때 정렬 기준에 맞는 위치를 찾아 삽입하는 함수
+
 		thread_block (); // A가 BLOCKED 되고 다른 스레드 실행. 이후 A가 CPU를 얻으면 thread_block 재개
 		//thread_block의 역할.
 		//현재 스레드를 BLOCKED 상태로 만든다.
@@ -114,6 +117,7 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
+	
 	if (!list_empty (&sema->waiters))
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),  //리스트 맨 앞 요소 제거 후 포인터 반환. list_entry로 thread 구조체 주소 구하기.
 					struct thread, elem));                            // 즉, 빈스트가 아니면  semaphore 대기 리스트의 맨 앞 스레드를 READY상태로 만들기.(우선순위 검사가 없네?? 이거 문제있다. 현재 FIFO로 꺼내올 듯.)
