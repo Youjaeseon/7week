@@ -171,12 +171,12 @@ sema_test_helper (void *sema_) {
    acquire and release it.  When these restrictions prove
    onerous, it's a good sign that a semaphore should be used,
    instead of a lock. */
-void
+void // lock은 특정 공유 자원에 한 번에 하나의 스레드만 접근하도록 보호하는 도구. 임계구역 필요(acquire와 release 사이).
 lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
-	lock->holder = NULL;
-	sema_init (&lock->semaphore, 1);
+	lock->holder = NULL; //lock을 소유한 스레드가 없음.
+	sema_init (&lock->semaphore, 1); //lock 내부 semaphore의 허가 개수 1.
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -194,7 +194,7 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	lock->holder = thread_current (); // 현재 쓰레드 lock 소유.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -203,7 +203,7 @@ lock_acquire (struct lock *lock) {
 
    This function will not sleep, so it may be called within an
    interrupt handler. */
-bool
+bool  // 왜 필요한 함수인건지 확인하기.
 lock_try_acquire (struct lock *lock) {
 	bool success;
 
@@ -225,21 +225,21 @@ lock_try_acquire (struct lock *lock) {
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
-	ASSERT (lock_held_by_current_thread (lock));
+	ASSERT (lock_held_by_current_thread (lock)); //현재 쓰레드가 소유자가 맞는지.
 
 	lock->holder = NULL;
-	sema_up (&lock->semaphore);
+	sema_up (&lock->semaphore); //semaphore증가.
 }
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */
-bool
+bool  //lock 소유 여부 확인.
 lock_held_by_current_thread (const struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	return lock->holder == thread_current ();
-}
+}  //Donation을 구현하려면 Lock을 기다리는 스레드, 소유자, 기부받은 우선순위 등을 별도로 관리하는 로직이 필요.
 
 /* One semaphore in a list. */
 struct semaphore_elem {
@@ -255,7 +255,7 @@ cond_init (struct condition *cond) {
 	ASSERT (cond != NULL);
 
 	list_init (&cond->waiters);
-}
+} 
 
 /* Atomically releases LOCK and waits for COND to be signaled by
    some other piece of code.  After COND is signaled, LOCK is
@@ -279,7 +279,7 @@ cond_init (struct condition *cond) {
    we need to sleep. */
 void
 cond_wait (struct condition *cond, struct lock *lock) {
-	struct semaphore_elem waiter;
+	struct semaphore_elem waiter; //stack에 생성되는 지역변수. BLOCKED 되더라도 스택이 사라지지 않음!!
 
 	ASSERT (cond != NULL);
 	ASSERT (lock != NULL);
