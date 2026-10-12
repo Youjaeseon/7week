@@ -65,7 +65,7 @@ sema_down (struct semaphore *sema) {
 	ASSERT (!intr_context ()); // 현재 실행 위치가 인터럽트 핸들러 내부인지 확인.
 
 	old_level = intr_disable (); // 인터럽트 끄기. 인터럽트로 인해 실행이 중단되고 다른 스레드가 끼어들 수 있다.(원자성 보장.)
-	while (sema->value == 0) {  // Semaphore 0인 동안
+	while (sema->value == 0) {  // Semaphore 0인 동안 - if문이 아닌 이유는? sema_up을 했다고 해도 semaphore의 허가를 얻은것이 아님.
 		list_push_back (&sema->waiters, &thread_current ()->elem); // Sema->waitres에 현재 스레드 대기상태로 추가. 같은 elem을 동시에 여러 리스트에 넣으면 안된다.
 		thread_block (); // A가 BLOCKED 되고 다른 스레드 실행. 이후 A가 CPU를 얻으면 thread_block 재개
 		//thread_block의 역할.
@@ -74,8 +74,8 @@ sema_down (struct semaphore *sema) {
 		//다른 실행 가능한 스레드를 선택한다.
 		//문맥 교환을 수행한다.
 	}
-	sema->value--;
-	intr_set_level (old_level);
+	sema->value--;  //아닐시 value -1해서 허가. 
+	intr_set_level (old_level); // 저장해 두었던 인터럽트 상태 복원.
 }
 
 /* Down or "P" operation on a semaphore, but only if the
