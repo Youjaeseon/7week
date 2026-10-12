@@ -148,3 +148,6 @@ void do_iret (struct intr_frame *tf);
 void thread_sleep(int64_t wake_tick);
 void thread_wake(int64_t current_tick);
 #endif /* threads/thread.h */
+
+list_less_func compare_priority;
+list_less_func compare_cond_priority;

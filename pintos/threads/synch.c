@@ -133,6 +133,19 @@ sema_up (struct semaphore *sema) {
 
 
 	sema->value++;
+	if (!list_empty (&sema->waiters)) {
+		struct thread *t = thread_current();
+		struct thread *waiter_front = list_entry(list_front(&sema->waiters), struct thread, elem);
+		
+		thread_unblock (list_entry (list_pop_front (&sema->waiters),
+		struct thread, elem));
+			if (t->priority < waiter_front->priority) {
+				if(intr_context())
+					intr_yield_on_return();
+				else
+					thread_yield();
+			}
+		}
 	intr_set_level (old_level);
 	thread_check_preemption();
 }
@@ -258,10 +271,10 @@ lock_held_by_current_thread (const struct lock *lock) {
 }  //Donation을 구현하려면 Lock을 기다리는 스레드, 소유자, 기부받은 우선순위 등을 별도로 관리하는 로직이 필요.
 
 /* One semaphore in a list. */
-struct semaphore_elem {
-	struct list_elem elem;              /* List element. */
-	struct semaphore semaphore;         /* This semaphore. */
-};
+// struct semaphore_elem {
+// 	struct list_elem elem;              /* List element. */
+// 	struct semaphore semaphore;         /* This semaphore. */
+// };
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -359,7 +372,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
                    struct semaphore_elem, elem);
 
     sema_up(&waiter->semaphore);
-}
+   }
 }
 /* Wakes up all threads, if any, waiting on COND (protected by
    LOCK).  LOCK must be held before calling this function.
@@ -371,6 +384,8 @@ void  // 모든 쓰레드에게 신호.
 cond_broadcast (struct condition *cond, struct lock *lock) {
 	ASSERT (cond != NULL);
 	ASSERT (lock != NULL);
+
+	list_sort(&(cond->waiters), compare_cond_priority, NULL);
 
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
