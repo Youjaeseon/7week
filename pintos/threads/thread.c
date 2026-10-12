@@ -67,6 +67,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static void checkif_thr_need_preemption(struct thread *t);
 
 list_less_func compare_waketick;
 list_less_func compare_priority;
@@ -214,6 +215,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	checkif_thr_need_preemption(t);
 
 	return tid;
 }
@@ -367,6 +369,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	checkif_thr_need_preemption(thread_current());
+	// thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -642,4 +646,35 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+/* 
+ * 스레드 t가 현재 실행중인 스레드보다 우선순위가 높으면 선점, 낮으면 ready_list에 들어감. 
+ * list의 첫 요소보다 우선순위가 낮아도 양보해야 함.
+ */
+static void
+checkif_thr_need_preemption(struct thread *t)
+{
+	if (!list_empty(&ready_list)) {
+		struct thread *th = list_entry(list_front(&ready_list), struct thread, elem);
+		int pri = th->priority;
+		if (pri > t->priority) {
+			thread_yield();
+			return;
+		}
+	}
+	struct thread *curr = thread_current();
+	if (t->priority > curr->priority) {
+		thread_yield();
+	}
+}
+
+bool
+compare_cond_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	struct semaphore_elem *a = list_entry(a_, struct semaphore_elem, elem);
+	struct semaphore_elem *b = list_entry(b_, struct semaphore_elem, elem);
+
+	const struct thread *ta = list_entry(list_front(&(a->semaphore).waiters), struct thread, elem);
+	const struct thread *tb = list_entry(list_front(&(b->semaphore).waiters), struct thread, elem);
+	return ta->priority > tb->priority;
 }
