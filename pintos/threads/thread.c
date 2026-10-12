@@ -215,6 +215,10 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	//새 쓰레드가 진행중인 쓰레드보다 우선순위가 높은 경우 진행중인 쓰레드 CPU반납.
+	if(t->priority>thread_current()->priority)
+		thread_yield();
+
 	return tid;
 }
 
@@ -243,6 +247,7 @@ compare_waketick(const struct list_elem *a_, const struct list_elem *b_, void *a
 	return a->waketick < b->waketick;
 }
 
+// b보다 a가 크면 true.
 bool
 compare_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
 {

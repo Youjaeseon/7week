@@ -288,9 +288,9 @@ cond_wait (struct condition *cond, struct lock *lock) {
 
 	sema_init (&waiter.semaphore, 0);
 	list_push_back (&cond->waiters, &waiter.elem);
-	lock_release (lock);
-	sema_down (&waiter.semaphore);
-	lock_acquire (lock);
+	lock_release (lock); // 대기중일때 lock을 계속 소유중이면 다른 쓰레드들도 대기해야 함.
+	sema_down (&waiter.semaphore);  // 쓰레드가 BLOCKED 되면 함수는 여기서 멈춤. 추후 다시 CPU를 받고 아래 함수 실행.
+	lock_acquire (lock);	
 }
 
 /* If any threads are waiting on COND (protected by LOCK), then
@@ -307,7 +307,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	if (!list_empty (&cond->waiters)) //대기자가 있는지 확인.
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
 }
@@ -318,7 +318,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to signal a condition variable within an
    interrupt handler. */
-void
+void  // 모든 쓰레드에게 신호.
 cond_broadcast (struct condition *cond, struct lock *lock) {
 	ASSERT (cond != NULL);
 	ASSERT (lock != NULL);
