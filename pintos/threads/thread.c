@@ -217,6 +217,10 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 	checkif_thr_need_preemption(t);
 
+	//새 쓰레드가 진행중인 쓰레드보다 우선순위가 높은 경우 진행중인 쓰레드 CPU반납.
+	if(t->priority>thread_current()->priority)
+		thread_yield();
+
 	return tid;
 }
 
@@ -245,6 +249,7 @@ compare_waketick(const struct list_elem *a_, const struct list_elem *b_, void *a
 	return a->waketick < b->waketick;
 }
 
+// b보다 a가 크면 true.
 bool
 compare_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
 {
@@ -368,9 +373,16 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
-	checkif_thr_need_preemption(thread_current());
-	// thread_yield();
+	ASSERT(PRI_MIN <= new_priority &&
+        new_priority <= PRI_MAX);
+
+    enum intr_level old_level = intr_disable();
+
+    thread_current()->priority = new_priority;
+
+    intr_set_level(old_level);
+
+    thread_check_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -647,34 +659,24 @@ allocate_tid (void) {
 
 	return tid;
 }
-/* 
- * 스레드 t가 현재 실행중인 스레드보다 우선순위가 높으면 선점, 낮으면 ready_list에 들어감. 
- * list의 첫 요소보다 우선순위가 낮아도 양보해야 함.
- */
-static void
-checkif_thr_need_preemption(struct thread *t)
-{
-	if (!list_empty(&ready_list)) {
-		struct thread *th = list_entry(list_front(&ready_list), struct thread, elem);
-		int pri = th->priority;
-		if (pri > t->priority) {
-			thread_yield();
-			return;
-		}
-	}
-	struct thread *curr = thread_current();
-	if (t->priority > curr->priority) {
-		thread_yield();
-	}
-}
 
-bool
-compare_cond_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+void
+thread_check_preemption(void)
 {
-	struct semaphore_elem *a = list_entry(a_, struct semaphore_elem, elem);
-	struct semaphore_elem *b = list_entry(b_, struct semaphore_elem, elem);
+    enum intr_level old_level = intr_disable();
 
-	const struct thread *ta = list_entry(list_front(&(a->semaphore).waiters), struct thread, elem);
-	const struct thread *tb = list_entry(list_front(&(b->semaphore).waiters), struct thread, elem);
-	return ta->priority > tb->priority;
+    if (!list_empty(&ready_list)) {
+        struct thread *highest =
+            list_entry(list_front(&ready_list),
+                       struct thread, elem);
+
+        if (highest->priority > thread_current()->priority) {
+            if (intr_context())
+                intr_yield_on_return(); //인터럽트 종료 후 CPU 양보
+            else
+                thread_yield();
+        }
+    }
+
+    intr_set_level(old_level);
 }
