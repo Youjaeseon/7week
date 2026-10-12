@@ -117,12 +117,24 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),  //리스트 맨 앞 요소 제거 후 포인터 반환. list_entry로 thread 구조체 주소 구하기.
-					struct thread, elem));                            // 즉, 빈스트가 아니면  semaphore 대기 리스트의 맨 앞 스레드를 READY상태로 만들기.(우선순위 검사가 없네?? 이거 문제있다. 현재 FIFO로 꺼내올 듯.)
+
+//	if (!list_empty (&sema->waiters))
+//		thread_unblock (list_entry (list_pop_front (&sema->waiters),  //리스트 맨 앞 요소 제거 후 포인터 반환. list_entry로 thread 구조체 주소 구하기.
+//					struct thread, elem));                            // 즉, 빈스트가 아니면  semaphore 대기 리스트의 맨 앞 스레드를 READY상태로 만들기.(우선순위 검사가 없네?? 이거 문제있다. 현재 FIFO로 꺼내올 듯.)
+
+ 	if (!list_empty(&sema->waiters)) {
+        list_sort(&sema->waiters,compare_priority,NULL); //정렬
+
+        struct thread *t =list_entry(list_pop_front(&sema->waiters),struct thread, elem);
+		//list_entry는 elem의 실제 쓰레드 주소를 가져오는 함수.
+
+        thread_unblock(t);
+    }
+
+
 	sema->value++;
 	intr_set_level (old_level);
+	hread_check_preemption();
 }
 
 static void sema_test_helper (void *sema_);

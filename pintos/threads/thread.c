@@ -670,7 +670,7 @@ thread_check_preemption(void)
 
         if (highest->priority > thread_current()->priority) {
             if (intr_context())
-                intr_yield_on_return();
+                intr_yield_on_return(); //인터럽트 종료 후 CPU 양보
             else
                 thread_yield();
         }
