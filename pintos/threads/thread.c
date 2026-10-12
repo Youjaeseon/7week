@@ -215,7 +215,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	checkif_thr_need_preemption(t);
+	// checkif_thr_need_preemption(t);
 
 	//새 쓰레드가 진행중인 쓰레드보다 우선순위가 높은 경우 진행중인 쓰레드 CPU반납.
 	if(t->priority>thread_current()->priority)

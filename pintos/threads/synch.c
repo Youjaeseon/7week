@@ -385,9 +385,16 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	ASSERT (cond != NULL);
 	ASSERT (lock != NULL);
 
-	list_sort(&(cond->waiters), compare_cond_priority, NULL);
+	// list_sort(&(cond->waiters), compare_cond_priority, NULL);
+	list_sort(&cond->waiters,
+              cond_priority_less,
+              NULL);
+	while (!list_empty (&cond->waiters)){
+		struct semaphore_elem *waiter =
+		list_entry(list_pop_front(&cond->waiters),
+				struct semaphore_elem, elem);
 
-	while (!list_empty (&cond->waiters))
-		cond_signal (cond, lock);
+   	sema_up(&waiter->semaphore);
+	}
 }
 
