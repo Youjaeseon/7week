@@ -84,7 +84,7 @@ sema_down (struct semaphore *sema) {
 
    This function may be called from an interrupt handler. */
 bool
-sema_try_down (struct semaphore *sema) {
+sema_try_down (struct semaphore *sema) {  // 허가가 없을 때 기다리지 않음.
 	enum intr_level old_level;
 	bool success;
 
@@ -115,8 +115,8 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+		thread_unblock (list_entry (list_pop_front (&sema->waiters),  //리스트 맨 앞 요소 제거 후 포인터 반환. list_entry로 thread 구조체 주소 구하기.
+					struct thread, elem));                            // 즉, 빈스트가 아니면  semaphore 대기 리스트의 맨 앞 스레드를 READY상태로 만들기.(우선순위 검사가 없네?? 이거 문제있다. 현재 FIFO로 꺼내올 듯.)
 	sema->value++;
 	intr_set_level (old_level);
 }
@@ -126,9 +126,9 @@ static void sema_test_helper (void *sema_);
 /* Self-test for semaphores that makes control "ping-pong"
    between a pair of threads.  Insert calls to printf() to see
    what's going on. */
-void
+void  // 두 스레드의 실행 순서를 맞추는 신호로 활용.
 sema_self_test (void) {
-	struct semaphore sema[2];
+	struct semaphore sema[2]; // 메인 스레드가 보조 스레드에게, 보조 스레드가 메인 스레드에게 보내는 신호라서 2개가 필요함. 초기값 0
 	int i;
 
 	printf ("Testing semaphores...");
