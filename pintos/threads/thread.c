@@ -118,6 +118,7 @@ thread_init (void) { // 스레드를 생성
 	list_init (&ready_list);
 	list_init (&destruction_req);
 	list_init (&sleep_list);
+	// list_init (&)
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -212,6 +213,13 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+	/* 도네용 추가했긴 함 */
+	// struct thread *tc = thread_current();
+	// if ((aux != NULL) && tc->priority < t->priority) {
+		// 	tc->priority = t->priority;
+		// 	list_insert_ordered(&tc->donors, &t->elem_donor, compare_priority, NULL);
+		// }
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -378,7 +386,9 @@ thread_set_priority (int new_priority) {
 
     enum intr_level old_level = intr_disable();
 
-    thread_current()->priority = new_priority;
+    // thread_current()->priority = new_priority;
+	thread_current()->old_priority = new_priority;
+	refresh_priority();
 
     intr_set_level(old_level);
 
@@ -479,7 +489,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->old_priority = priority;
 	t->magic = THREAD_MAGIC;
+	list_init (&t->donors);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -679,4 +691,22 @@ thread_check_preemption(void)
     }
 
     intr_set_level(old_level);
+}
+
+// bool
+// compare_waiters_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux)
+// {
+// 	const struct thread *a = list_entry(a_, struct thread, elem);
+// 	const struct thread *b = list_entry(b_, struct thread, elem);
+
+// 	return a->pri
+// }
+
+bool
+compare_donate_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct thread *a = list_entry(a_, struct thread, elem_donor); // elem과 elem_donor 차이 때문에 새로 선언.
+	const struct thread *b = list_entry(b_, struct thread, elem_donor);
+
+	return a->priority > b->priority;
 }
