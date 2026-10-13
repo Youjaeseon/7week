@@ -91,10 +91,14 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int old_priority;					/* 기존 우선순위 */
 	int64_t waketick;					/* wake해야 하는 tick 저장 */
 	
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list donors;						/* 도네한 스레드 리스트 */
+	struct list_elem elem_donor;				/* donation용 리스트 삽입용 */
+	struct lock *wait_on_lock;					/* 대기 중인 lock */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -151,3 +155,5 @@ void thread_wake(int64_t current_tick);
 
 list_less_func compare_priority;
 list_less_func compare_cond_priority;
+list_less_func compare_waiters_priority;
+list_less_func compare_donate_priority;

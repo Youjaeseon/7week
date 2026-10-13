@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static void do_donate(void);
+static void remove_donated(struct lock *lock);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -121,31 +124,21 @@ sema_up (struct semaphore *sema) {
 //	if (!list_empty (&sema->waiters))
 //		thread_unblock (list_entry (list_pop_front (&sema->waiters),  //리스트 맨 앞 요소 제거 후 포인터 반환. list_entry로 thread 구조체 주소 구하기.
 //					struct thread, elem));                            // 즉, 빈스트가 아니면  semaphore 대기 리스트의 맨 앞 스레드를 READY상태로 만들기.(우선순위 검사가 없네?? 이거 문제있다. 현재 FIFO로 꺼내올 듯.)
-
- 	if (!list_empty(&sema->waiters)) {
-        list_sort(&sema->waiters,compare_priority,NULL); //정렬
-
-        struct thread *t =list_entry(list_pop_front(&sema->waiters),struct thread, elem);
-		//list_entry는 elem의 실제 쓰레드 주소를 가져오는 함수.
-
-        thread_unblock(t);
-    }
-
-
 	sema->value++;
 	if (!list_empty (&sema->waiters)) {
 		struct thread *t = thread_current();
 		struct thread *waiter_front = list_entry(list_front(&sema->waiters), struct thread, elem);
 		
+		list_sort(&sema->waiters, compare_priority, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 		struct thread, elem));
-			if (t->priority < waiter_front->priority) {
-				if(intr_context())
-					intr_yield_on_return();
-				else
-					thread_yield();
-			}
+		if (t->priority < waiter_front->priority) {
+			if(intr_context())
+				intr_yield_on_return();
+			else
+				thread_yield();
 		}
+	}
 	intr_set_level (old_level);
 	thread_check_preemption();
 }
@@ -222,8 +215,16 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	struct thread *t = thread_current();
+	if(lock->holder != NULL && (lock->holder->priority < t->priority)) { // 도네이션 받는 조건
+		t->wait_on_lock = lock; // 내가 기다리고 있는 락 저장.
+		list_insert_ordered(&(lock->holder->donors),&t->elem_donor, compare_donate_priority, NULL); // 나한테 도네 준 스레드 저장
+		// lock->holder->priority = t->priority; // 도네 받기
+		do_donate();
+	}
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current (); // 현재 쓰레드 lock 소유.
+	t->wait_on_lock = NULL;
+	lock->holder = thread_current ();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -256,9 +257,13 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock)); //현재 쓰레드가 소유자가 맞는지.
 
+	remove_donated(lock); // 도네 받은거 반환.
+	refresh_priority(); // holder 우선순위 재계산.
+
 	lock->holder = NULL;
-	sema_up (&lock->semaphore); //semaphore증가.
+	sema_up (&lock->semaphore);
 }
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
@@ -398,3 +403,54 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	}
 }
 
+
+static void
+remove_donated(struct lock *lock) {
+	struct thread *holder = lock->holder;
+	if (list_empty(&holder->donors))
+		return ; 
+
+	// else {
+	// 	holder->priority = list_entry(list_pop_front(&holder->donors), struct thread, elem_donor)->priority;
+	// }
+	struct list_elem *elem_dono = list_begin(&holder->donors); // 홀더가 받은 도네 리스트
+	struct thread *donor ;
+	while (elem_dono != list_end(&holder->donors)) {
+		struct list_elem *next = list_next(elem_dono); // 다음 원소로 미리 저장. 꺼내고 이동하는 게 문제가 될 수 있음.
+		donor = list_entry(elem_dono, struct thread, elem_donor); // 순회를 위한 꺼내기.
+
+		if (donor->wait_on_lock == lock) { // 현재 락을 기다리던 스레드면
+			list_remove(elem_dono); // 도네이터 목록에서 빼고.
+		}
+		elem_dono = next; // 다음 원소로 이동.
+
+	}
+}
+
+static void
+do_donate(void) {
+	struct thread *t = thread_current();
+	struct thread *holder;
+	/* 
+	 * 스레드 t의 wait_on_lock의 holder는 t가 도네이션 한 스레드임.
+	 * 그 holder의 wait_on_lock 의 holder는 holder가 도네이션 한 스레드임.
+	 * 반복문으로 중첩 도네이션 계산하는 원리.
+	 */
+	while(t->wait_on_lock != NULL) { // 내가 기다리고 있는 락의 소유자에게 도네
+		holder = t->wait_on_lock->holder;
+		holder->priority = t->priority;
+		t = holder;
+	}
+}
+
+void
+refresh_priority(void) {
+	struct thread *curr = thread_current();
+	// 나에게 도네이션 한 스레드가 없으면 원래 우선순위로 돌아가기.
+	if (list_empty(&curr->donors))
+		curr->priority = curr->old_priority;
+	// 나에게 도네이션 한 스레드가 있으면, 그 리스트의 가장 앞 원소의 우선순위 따르기 (정렬되어 있기 때문에)
+	else {
+		curr->priority = list_entry(list_front(&curr->donors), struct thread, elem_donor)->priority;
+	}
+}
