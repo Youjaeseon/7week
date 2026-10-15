@@ -67,7 +67,6 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static void checkif_thr_need_preemption(struct thread *t);
 
 list_less_func compare_waketick;
 list_less_func compare_priority;
@@ -279,7 +278,8 @@ thread_sleep (int64_t wake_tick)
 void
 thread_wake (int64_t current_tick)
 {
-	while(list_size(&sleep_list))
+	//list_size는 크기를 확인하기 위해 순회함. 순회하지 않는 list_empty로 최적화
+	while(!list_empty(&sleep_list)) 
 	{
 		struct thread *t = list_entry(list_front(&sleep_list), struct thread, elem);
 		if(t->waketick > current_tick)
@@ -307,8 +307,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	// list_push_back (&ready_list, &t->elem);
-	list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
+	list_push_back (&ready_list, &t->elem);
+	// list_insert_ordered(&ready_list, &(t->elem), &compare_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -371,8 +371,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		// list_push_back (&ready_list, &curr->elem);
-		list_insert_ordered(&ready_list, &(curr->elem), &compare_priority, NULL);
+		list_push_back (&ready_list, &curr->elem);
+		// list_insert_ordered(&ready_list, &(curr->elem), &compare_priority, NULL);
 
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
@@ -503,8 +503,11 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	else {
+		struct thread *t = list_entry (list_min (&ready_list, compare_priority, NULL), struct thread, elem);
+		list_remove (&t->elem);
+		return t;
+	}
 }
 
 /* Use iretq to launch the thread */
@@ -679,7 +682,7 @@ thread_check_preemption(void)
 
     if (!list_empty(&ready_list)) {
         struct thread *highest =
-            list_entry(list_front(&ready_list),
+            list_entry(list_min(&ready_list, compare_priority, NULL),
                        struct thread, elem);
 
         if (highest->priority > thread_current()->priority) {
