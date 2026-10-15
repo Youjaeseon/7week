@@ -71,8 +71,9 @@ sema_down (struct semaphore *sema) {
 	while (sema->value == 0) {  // Semaphore 0인 동안 - if문이 아닌 이유는? sema_up을 했다고 해도 semaphore의 허가를 얻은것이 아님.
 		//list_push_back (&sema->waiters, &thread_current ()->elem); // Sema->waitres에 현재 스레드 대기상태로 추가. 같은 elem을 동시에 여러 리스트에 넣으면 안된다.
 		
-		list_insert_ordered(&sema->waiters,&thread_current()->elem,compare_priority,NULL); // 리스트에 원소 넣을 때 정렬 기준에 맞는 위치를 찾아 삽입하는 함수
-
+		// list_insert_ordered(&sema->waiters,&thread_current()->elem,compare_priority,NULL); // 리스트에 원소 넣을 때 정렬 기준에 맞는 위치를 찾아 삽입하는 함수
+		// 정렬해서 삽입하는 건 O(n), 그냥 삽입은 O(1) 최적화 가능.
+		list_push_back(&sema->waiters, &thread_current()->elem);
 		thread_block (); // A가 BLOCKED 되고 다른 스레드 실행. 이후 A가 CPU를 얻으면 thread_block 재개
 		//thread_block의 역할.
 		//현재 스레드를 BLOCKED 상태로 만든다.
@@ -126,18 +127,30 @@ sema_up (struct semaphore *sema) {
 //					struct thread, elem));                            // 즉, 빈스트가 아니면  semaphore 대기 리스트의 맨 앞 스레드를 READY상태로 만들기.(우선순위 검사가 없네?? 이거 문제있다. 현재 FIFO로 꺼내올 듯.)
 	sema->value++;
 	if (!list_empty (&sema->waiters)) {
-		struct thread *t = thread_current();
-		struct thread *waiter_front = list_entry(list_front(&sema->waiters), struct thread, elem);
+		// struct thread *t = thread_current();
+		// struct thread *waiter_front = list_entry(list_front(&sema->waiters), struct thread, elem);
 		
-		list_sort(&sema->waiters, compare_priority, NULL);
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-		struct thread, elem));
-		if (t->priority < waiter_front->priority) {
-			if(intr_context())
-				intr_yield_on_return();
-			else
-				thread_yield();
-		}
+		// list_sort(&sema->waiters, compare_priority, NULL);
+		// thread_unblock (list_entry (list_pop_front (&sema->waiters),
+		// struct thread, elem));
+		// 꺼낼 때 최대 O(n)만 작동하도록.
+		// list_max가 아니고 list_min인 이유는 기존 비교 함수로는 list_min이 최댓값 뽑아주기 때문임.
+		struct list_elem *e = list_min(&sema->waiters, compare_priority, NULL);
+		list_remove(e);
+		thread_unblock(list_entry(e, struct thread, elem));
+
+		/* 
+		 * 아래 비교는 thread_check_preemption에서 수행하고 있음.
+		 * unblock한 스레드 e는 ready_list에 들어가니까 check_preemtion함수가 외부에서 잘 작동함.
+		 * 굳이 내부에서 비교하는 로직이 필요 없음. 오히려 중복 검사하는 꼴.
+		 */ 
+
+		// if (t->priority < waiter_front->priority) { 
+		// 	if(intr_context())
+		// 		intr_yield_on_return();
+		// 	else
+		// 		thread_yield();
+		// }
 	}
 	intr_set_level (old_level);
 	thread_check_preemption();
@@ -218,7 +231,8 @@ lock_acquire (struct lock *lock) {
 	struct thread *t = thread_current();
 	if(lock->holder != NULL && (lock->holder->priority < t->priority)) { // 도네이션 받는 조건
 		t->wait_on_lock = lock; // 내가 기다리고 있는 락 저장.
-		list_insert_ordered(&(lock->holder->donors),&t->elem_donor, compare_donate_priority, NULL); // 나한테 도네 준 스레드 저장
+		// list_insert_ordered(&(lock->holder->donors),&t->elem_donor, compare_donate_priority, NULL); // 나한테 도네 준 스레드 저장
+		list_push_back(&(lock->holder->donors), &t->elem_donor);
 		// lock->holder->priority = t->priority; // 도네 받기
 		do_donate();
 	}
@@ -368,15 +382,20 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	// 				struct semaphore_elem, elem)->semaphore);
 
 	if (!list_empty(&cond->waiters)) {
-    list_sort(&cond->waiters,
-              cond_priority_less,
-              NULL);
+		// list_sort(&cond->waiters,
+		// 		cond_priority_less,
+		// 		NULL);
 
-    struct semaphore_elem *waiter =
-        list_entry(list_pop_front(&cond->waiters),
-                   struct semaphore_elem, elem);
+		// struct semaphore_elem *waiter =
+		// 	list_entry(list_pop_front(&cond->waiters),
+		// 			struct semaphore_elem, elem);
+	/* 같은 이유로 최댓값 한 번 순회하는 것이 좋다고 생각. */
+		struct list_elem *e = list_min(&cond->waiters, cond_priority_less, NULL);
+		list_remove(e);
+		
+    // sema_up(&waiter->semaphore);
+		sema_up(&list_entry(e, struct semaphore_elem, elem)->semaphore);
 
-    sema_up(&waiter->semaphore);
    }
 }
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -394,7 +413,7 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	list_sort(&cond->waiters,
               cond_priority_less,
               NULL);
-	while (!list_empty (&cond->waiters)){
+	while (!list_empty (&cond->waiters)){ // 이거 인터럽트 끄고 해야하나?
 		struct semaphore_elem *waiter =
 		list_entry(list_pop_front(&cond->waiters),
 				struct semaphore_elem, elem);
@@ -405,7 +424,7 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 
 
 static void
-remove_donated(struct lock *lock) {
+remove_donated (struct lock *lock) {
 	struct thread *holder = lock->holder;
 	if (list_empty(&holder->donors))
 		return ; 
@@ -428,7 +447,7 @@ remove_donated(struct lock *lock) {
 }
 
 static void
-do_donate(void) {
+do_donate (void) {
 	struct thread *t = thread_current();
 	struct thread *holder;
 	/* 
@@ -436,21 +455,27 @@ do_donate(void) {
 	 * 그 holder의 wait_on_lock 의 holder는 holder가 도네이션 한 스레드임.
 	 * 반복문으로 중첩 도네이션 계산하는 원리.
 	 */
-	while(t->wait_on_lock != NULL) { // 내가 기다리고 있는 락의 소유자에게 도네
+	// while(t->wait_on_lock != NULL) { // 내가 기다리고 있는 락의 소유자에게 도네
+	// 	holder = t->wait_on_lock->holder;
+	// 	holder->priority = t->priority;
+	// 	t = holder;
+	// }
+	/* 반복문의 최대 횟수를 8회로 제한해서 무한루프 방지. 문서에서 제시한 예시가 8임. */
+	for (int loops = 0; loops < 8 && t->wait_on_lock != NULL; loops++) {
 		holder = t->wait_on_lock->holder;
-		holder->priority = t->priority;
+		holder->priority = (t->priority > holder->priority ? t->priority : holder->priority);
 		t = holder;
 	}
 }
 
 void
-refresh_priority(void) {
+refresh_priority (void) {
 	struct thread *curr = thread_current();
 	// 나에게 도네이션 한 스레드가 없으면 원래 우선순위로 돌아가기.
 	if (list_empty(&curr->donors))
 		curr->priority = curr->old_priority;
 	// 나에게 도네이션 한 스레드가 있으면, 그 리스트의 가장 앞 원소의 우선순위 따르기 (정렬되어 있기 때문에)
 	else {
-		curr->priority = list_entry(list_front(&curr->donors), struct thread, elem_donor)->priority;
+		curr->priority = list_entry(list_min(&curr->donors, compare_priority, NULL), struct thread, elem_donor)->priority;
 	}
 }

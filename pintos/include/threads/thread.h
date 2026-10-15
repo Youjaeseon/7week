@@ -153,6 +153,8 @@ void thread_sleep(int64_t wake_tick);
 void thread_wake(int64_t current_tick);
 #endif /* threads/thread.h */
 
+void thread_check_preemption(void);
+
 list_less_func compare_priority;
 list_less_func compare_cond_priority;
 list_less_func compare_waiters_priority;
